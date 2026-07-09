@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Income or expense item in cash flow",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "type", "amount", "description", "category", "date", "createdAt"]
+    },
+    "Debt": {
+      "title": "Debt",
+      "description": "Record of who owes money",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "debtorName": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "dueDate": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["pending", "paid"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "debtorName", "amount", "description", "date", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "transactions/{transactionId}": {
+      "schema": "#/entities/Transaction",
+      "description": "Cash flow transactions"
+    },
+    "debts/{debtId}": {
+      "schema": "#/entities/Debt",
+      "description": "Records of debts"
+    }
+  }
+}

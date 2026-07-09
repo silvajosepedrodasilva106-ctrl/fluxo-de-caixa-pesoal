@@ -1,0 +1,6 @@
+{
+  "name": "Fluxo de Caixa e Cobranças",
+  "description": "Sistema de fluxo de caixa pessoal com controle de entradas e saídas, visualização mensal por categoria e gerenciamento de devedores por nome e data.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
