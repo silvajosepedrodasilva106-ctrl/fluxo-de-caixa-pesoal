@@ -32,7 +32,7 @@ export async function getOrCreateUser(): Promise<string> {
           const userCredential = await signInAnonymously(auth);
           resolve(userCredential.user.uid);
         } catch (error) {
-          console.warn("Utilizando identificador persistente seguro offline/local para sincronização...", error);
+          console.warn("Informação: signInAnonymously está desativado ou restrito no Console Firebase. Utilizando identificador persistente local seguro para sincronização offline-first...", error);
           // Fallback to a local random user ID if connection fails, ensuring offline-first operation
           let localId = localStorage.getItem('cashflow_fallback_uid');
           if (!localId) {

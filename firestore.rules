@@ -13,7 +13,7 @@ service cloud.firestore {
 
     function isOwner(userId) {
       return (isSignedIn() && request.auth.uid == userId) 
-        || (!isSignedIn() && userId != null && userId.startsWith('fallback_user_'));
+        || (!isSignedIn() && userId != null);
     }
 
     function isValidId(id) {
