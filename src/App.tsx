@@ -11,10 +11,12 @@ import {
   removeTransaction,
   getDebts,
   saveDebt,
-  removeDebt
+  removeDebt,
+  getAdminPassword,
+  saveAdminPassword
 } from './dbHelper';
 import { Transaction, Debt } from './types';
-import { Loader2, Sparkles, TrendingUp, TrendingDown, Users } from 'lucide-react';
+import { Loader2, Sparkles, TrendingUp, TrendingDown, Users, Lock, Unlock, KeyRound, Eye, EyeOff, ShieldAlert, ShieldCheck } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'cashflow' | 'debts'>('cashflow');
@@ -49,6 +51,24 @@ export default function App() {
     onConfirm: () => {}
   });
 
+  // Admin Login States
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    return localStorage.getItem('cashflow_admin_logged_in') === 'true';
+  });
+  const [adminPassword, setAdminPassword] = useState<string>('admin 123');
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
+  // Password Change States
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [changePasswordError, setChangePasswordError] = useState('');
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState('');
+
   // 1. Initialize user on mount
   useEffect(() => {
     async function initUser() {
@@ -61,6 +81,82 @@ export default function App() {
     }
     initUser();
   }, []);
+
+  // Fetch admin custom password when userId is set
+  useEffect(() => {
+    if (!userId) return;
+    async function fetchSettings() {
+      try {
+        const pw = await getAdminPassword(userId);
+        setAdminPassword(pw);
+      } catch (err) {
+        console.error("Error fetching admin password:", err);
+      }
+    }
+    fetchSettings();
+  }, [userId]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginUsername.trim().toLowerCase() !== 'admin') {
+      setLoginError('Usuário incorreto. Utilize o usuário "admin".');
+      return;
+    }
+    if (loginPassword !== adminPassword) {
+      setLoginError('Senha incorreta. Tente novamente.');
+      return;
+    }
+    setIsLoggedIn(true);
+    localStorage.setItem('cashflow_admin_logged_in', 'true');
+    setLoginError('');
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem('cashflow_admin_logged_in');
+    setLoginUsername('');
+    setLoginPassword('');
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChangePasswordError('');
+    setChangePasswordSuccess('');
+
+    if (oldPassword !== adminPassword) {
+      setChangePasswordError('A senha atual está incorreta.');
+      return;
+    }
+
+    if (newPassword.trim().length < 4) {
+      setChangePasswordError('A nova senha deve ter pelo menos 4 caracteres.');
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setChangePasswordError('A confirmação da nova senha não confere.');
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      await saveAdminPassword(userId!, newPassword.trim());
+      setAdminPassword(newPassword.trim());
+      setChangePasswordSuccess('Senha alterada com sucesso!');
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setTimeout(() => {
+        setShowChangePasswordModal(false);
+        setChangePasswordSuccess('');
+      }, 1500);
+    } catch (err) {
+      console.error("Erro ao alterar senha:", err);
+      setChangePasswordError('Erro de conexão ao salvar a nova senha.');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // 2. Fetch data once user ID is ready
   useEffect(() => {
@@ -293,6 +389,92 @@ export default function App() {
     );
   }
 
+  // Login Screen Overlay
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl border border-slate-100 shadow-xl">
+          <div className="text-center">
+            <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-indigo-50 text-indigo-600 mb-4">
+              <Lock className="h-6 w-6" />
+            </div>
+            <h2 className="text-3xl font-display font-extrabold text-slate-900 tracking-tight">
+              Acesso Restrito
+            </h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Digite suas credenciais administrativas para gerenciar o fluxo financeiro.
+            </p>
+          </div>
+
+          <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+            {loginError && (
+              <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 rounded-lg text-xs flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 shrink-0" />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="username" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Usuário
+                </label>
+                <input
+                  id="username"
+                  name="username"
+                  type="text"
+                  required
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  placeholder="admin"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors bg-slate-50/50"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Senha
+                </label>
+                <div className="relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Sua senha"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors bg-slate-50/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <button
+                type="submit"
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors shadow-md shadow-indigo-500/10"
+              >
+                Entrar no Painel
+              </button>
+            </div>
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-slate-100 text-center text-xs text-slate-400 font-medium">
+            Senha padrão inicial: <span className="font-bold text-indigo-500">admin 123</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50/50 pb-16 flex flex-col justify-between">
       <div>
@@ -306,6 +488,8 @@ export default function App() {
             setEditingDebt(null);
           }} 
           syncing={syncing} 
+          onLogout={handleLogout}
+          onChangePasswordClick={() => setShowChangePasswordModal(true)}
         />
 
         {/* Outer Content Stage */}
@@ -417,9 +601,111 @@ export default function App() {
       </div>
 
       {/* Human/Clean App Footer */}
-      <footer className="mt-20 text-center max-w-7xl mx-auto px-4 text-xs text-slate-400 font-medium">
+      <footer className="my-12 text-center max-w-7xl mx-auto px-4 text-xs text-slate-400 font-medium">
         <p>© 2026 Fluxo de Caixa e Cobranças • Todos os dados salvos em nuvem privada e local storage</p>
       </footer>
+
+      {/* Change Password Modal */}
+      {showChangePasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white border border-slate-100 p-6 sm:p-8 rounded-2xl shadow-xl space-y-6 relative animate-in fade-in zoom-in-95 duration-150">
+            <div className="text-center">
+              <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-indigo-50 text-indigo-600 mb-4">
+                <KeyRound className="h-6 w-6" />
+              </div>
+              <h3 className="font-display font-bold text-slate-800 text-xl tracking-tight">
+                Alterar Senha de Acesso
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Substitua a senha de administrador atual para assegurar o painel.
+              </p>
+            </div>
+
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              {changePasswordError && (
+                <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 rounded-lg text-xs flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 shrink-0" />
+                  <span>{changePasswordError}</span>
+                </div>
+              )}
+
+              {changePasswordSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg text-xs flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
+                  <span>{changePasswordSuccess}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Senha Atual
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors bg-slate-50/50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Nova Senha
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Mínimo 4 caracteres"
+                  className="w-full px-4 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors bg-slate-50/50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Confirmar Nova Senha
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  placeholder="Confirme a nova senha"
+                  className="w-full px-4 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors bg-slate-50/50"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-4 border-t border-slate-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowChangePasswordModal(false);
+                    setOldPassword('');
+                    setNewPassword('');
+                    setConfirmNewPassword('');
+                    setChangePasswordError('');
+                    setChangePasswordSuccess('');
+                  }}
+                  className="w-1/2 py-2.5 px-4 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={syncing}
+                  className="w-1/2 py-2.5 px-4 border border-transparent rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors shadow-md shadow-indigo-500/10 disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {syncing && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Salvar Nova Senha
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modern, Beautiful Custom Confirm Modal (Bypasses browser confirm() iframe block) */}
       {confirmConfig.isOpen && (

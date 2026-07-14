@@ -7,10 +7,58 @@ import {
   doc, 
   query, 
   where,
-  setDoc
+  setDoc,
+  getDoc
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { Transaction, Debt } from './types';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 // ---------------- TRANSACTIONS ----------------
 
@@ -48,8 +96,11 @@ export async function getTransactions(userId: string): Promise<Transaction[]> {
     // Update local storage
     localStorage.setItem(`transactions_${userId}`, JSON.stringify(dbTransactions));
     return dbTransactions;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Firestore error fetching transactions, using cached version:", error);
+    if (error?.code === 'permission-denied' || error?.message?.includes('permission') || error?.message?.includes('Permission')) {
+      handleFirestoreError(error, OperationType.LIST, 'transactions');
+    }
     return transactions;
   }
 }
@@ -81,8 +132,11 @@ export async function saveTransaction(userId: string, transaction: Omit<Transact
   try {
     const docRef = doc(db, 'transactions', finalTransaction.id);
     await setDoc(docRef, finalTransaction);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Firestore error saving transaction, but saved locally:", error);
+    if (error?.code === 'permission-denied' || error?.message?.includes('permission') || error?.message?.includes('Permission')) {
+      handleFirestoreError(error, OperationType.WRITE, `transactions/${finalTransaction.id}`);
+    }
   }
 
   return finalTransaction;
@@ -104,8 +158,11 @@ export async function removeTransaction(userId: string, transactionId: string): 
   try {
     const docRef = doc(db, 'transactions', transactionId);
     await deleteDoc(docRef);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Firestore error deleting transaction, but deleted locally:", error);
+    if (error?.code === 'permission-denied' || error?.message?.includes('permission') || error?.message?.includes('Permission')) {
+      handleFirestoreError(error, OperationType.DELETE, `transactions/${transactionId}`);
+    }
   }
 }
 
@@ -150,8 +207,11 @@ export async function getDebts(userId: string): Promise<Debt[]> {
 
     localStorage.setItem(`debts_${userId}`, JSON.stringify(dbDebts));
     return dbDebts;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Firestore error fetching debts, using cached version:", error);
+    if (error?.code === 'permission-denied' || error?.message?.includes('permission') || error?.message?.includes('Permission')) {
+      handleFirestoreError(error, OperationType.LIST, 'debts');
+    }
     return debts;
   }
 }
@@ -188,8 +248,11 @@ export async function saveDebt(userId: string, debt: Omit<Debt, 'userId'> & { us
   try {
     const docRef = doc(db, 'debts', finalDebt.id);
     await setDoc(docRef, finalDebt);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Firestore error saving debt, but saved locally:", error);
+    if (error?.code === 'permission-denied' || error?.message?.includes('permission') || error?.message?.includes('Permission')) {
+      handleFirestoreError(error, OperationType.WRITE, `debts/${finalDebt.id}`);
+    }
   }
 
   return finalDebt;
@@ -211,7 +274,58 @@ export async function removeDebt(userId: string, debtId: string): Promise<void> 
   try {
     const docRef = doc(db, 'debts', debtId);
     await deleteDoc(docRef);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Firestore error deleting debt, but deleted locally:", error);
+    if (error?.code === 'permission-denied' || error?.message?.includes('permission') || error?.message?.includes('Permission')) {
+      handleFirestoreError(error, OperationType.DELETE, `debts/${debtId}`);
+    }
+  }
+}
+
+/**
+ * Fetches the custom admin password for the user. If not found, returns the default 'admin 123'.
+ */
+export async function getAdminPassword(userId: string): Promise<string> {
+  const localPw = localStorage.getItem(`admin_password_${userId}`);
+  if (localPw) {
+    return localPw;
+  }
+
+  try {
+    const docRef = doc(db, 'settings', userId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data.password) {
+        localStorage.setItem(`admin_password_${userId}`, data.password);
+        return data.password;
+      }
+    }
+  } catch (error: any) {
+    console.error("Error fetching admin settings from Firestore, using local default:", error);
+  }
+
+  // Default password if not found anywhere
+  return 'admin 123';
+}
+
+/**
+ * Saves a new custom admin password for the user in both local storage and Firestore.
+ */
+export async function saveAdminPassword(userId: string, newPassword: string): Promise<void> {
+  localStorage.setItem(`admin_password_${userId}`, newPassword);
+
+  try {
+    const docRef = doc(db, 'settings', userId);
+    await setDoc(docRef, {
+      userId,
+      password: newPassword,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error("Error saving admin settings to Firestore:", error);
+    if (error?.code === 'permission-denied' || error?.message?.includes('permission') || error?.message?.includes('Permission')) {
+      handleFirestoreError(error, OperationType.WRITE, `settings/${userId}`);
+    }
   }
 }

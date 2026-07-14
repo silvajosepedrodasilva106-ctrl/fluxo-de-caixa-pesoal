@@ -1,16 +1,20 @@
 import React from 'react';
-import { Wallet, Users, RefreshCw, LogIn } from 'lucide-react';
+import { Wallet, Users, RefreshCw, KeyRound, LogOut } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: 'cashflow' | 'debts';
   setActiveTab: (tab: 'cashflow' | 'debts') => void;
   syncing: boolean;
+  onLogout: () => void;
+  onChangePasswordClick: () => void;
 }
 
 export default function Header({
   activeTab,
   setActiveTab,
-  syncing
+  syncing,
+  onLogout,
+  onChangePasswordClick
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
@@ -60,13 +64,31 @@ export default function Header({
             </button>
           </nav>
 
-          {/* Sync Status Badge */}
-          <div className="flex items-center gap-1.5">
+          {/* Action Area (Sync Status & Admin Buttons) */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-100 px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs text-emerald-700 font-bold shadow-3xs">
               <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Nuvem Sincronizada</span>
               <span className="sm:hidden">Sinc.</span>
             </div>
+
+            <button
+              onClick={onChangePasswordClick}
+              title="Alterar Senha"
+              className="p-1.5 sm:p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-all cursor-pointer flex items-center gap-1"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span className="hidden lg:inline text-xs font-semibold">Alterar Senha</span>
+            </button>
+
+            <button
+              onClick={onLogout}
+              title="Sair"
+              className="p-1.5 sm:p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-all cursor-pointer flex items-center gap-1"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden lg:inline text-xs font-semibold">Sair</span>
+            </button>
           </div>
 
         </div>

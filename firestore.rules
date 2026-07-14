@@ -1,12 +1,99 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /transactions/{transactionId} {
-      allow read, write: if true;
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
     }
 
+    // Security helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return (isSignedIn() && request.auth.uid == userId) 
+        || (!isSignedIn() && userId != null && userId.startsWith('fallback_user_'));
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'userId', 'type', 'amount', 'description', 'category', 'date', 'createdAt'])
+        && data.keys().size() <= 9
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.type is string && (data.type == 'income' || data.type == 'expense')
+        && (data.amount is number || data.amount is int || data.amount is float) && data.amount >= 0
+        && data.description is string && data.description.size() <= 500
+        && data.category is string && data.category.size() <= 100
+        && data.date is string && data.date.size() <= 32
+        && data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidDebt(data) {
+      return data.keys().hasAll(['id', 'userId', 'debtorName', 'amount', 'description', 'date', 'status', 'createdAt'])
+        && data.keys().size() <= 10
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.debtorName is string && data.debtorName.size() <= 200
+        && (data.amount is number || data.amount is int || data.amount is float) && data.amount >= 0
+        && data.description is string && data.description.size() <= 500
+        && data.date is string && data.date.size() <= 32
+        && (!data.keys().hasAny(['dueDate']) || (data.dueDate is string && data.dueDate.size() <= 32))
+        && data.status is string && (data.status == 'pending' || data.status == 'paid')
+        && data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidSettings(data) {
+      return data.keys().hasAll(['userId', 'password', 'updatedAt'])
+        && data.keys().size() <= 4
+        && data.userId is string && data.userId.size() <= 128
+        && data.password is string && data.password.size() <= 200
+        && data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    // Rules for transactions collection
+    match /transactions/{transactionId} {
+      allow create: if isValidId(transactionId)
+                    && isValidTransaction(request.resource.data)
+                    && isOwner(request.resource.data.userId);
+
+      allow update: if isValidId(transactionId)
+                    && isValidTransaction(request.resource.data)
+                    && isOwner(resource.data.userId)
+                    && request.resource.data.userId == resource.data.userId
+                    && request.resource.data.id == resource.data.id;
+
+      allow read: if isOwner(resource.data.userId);
+
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    // Rules for debts collection
     match /debts/{debtId} {
-      allow read, write: if true;
+      allow create: if isValidId(debtId)
+                    && isValidDebt(request.resource.data)
+                    && isOwner(request.resource.data.userId);
+
+      allow update: if isValidId(debtId)
+                    && isValidDebt(request.resource.data)
+                    && isOwner(resource.data.userId)
+                    && request.resource.data.userId == resource.data.userId
+                    && request.resource.data.id == resource.data.id;
+
+      allow read: if isOwner(resource.data.userId);
+
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    // Rules for settings collection
+    match /settings/{userId} {
+      allow create, update: if isOwner(userId) && isValidSettings(request.resource.data);
+      allow read: if isOwner(userId);
+      allow delete: if isOwner(userId);
     }
   }
 }
